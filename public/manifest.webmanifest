@@ -1,0 +1,16 @@
+{
+  "name": "GCAIP.AI Publisher",
+  "short_name": "GCAIP",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#C0FF00",
+  "description": "High Performance AI Publisher Command Center",
+  "icons": [
+    {
+      "src": "https://www.google.com/favicon.ico",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

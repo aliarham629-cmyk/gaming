@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isEmailVerified() { return request.auth.token.email_verified == true; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // --- Validation Blueprints ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'createdAt']) &&
+             data.keys().size() <= 6 &&
+             data.email is string && data.email.size() <= 256;
+    }
+
+    function isValidAPIKey(data) {
+      return data.keys().hasAll(['key', 'status', 'createdAt']) &&
+             data.keys().size() <= 7 &&
+             data.key is string && data.key.size() <= 1024 &&
+             data.status in ['active', 'exhausted', 'invalid'];
+    }
+
+    function isValidWebsite(data) {
+      return data.keys().hasAll(['siteUrl', 'username', 'appPassword', 'createdAt']) &&
+             data.keys().size() <= 8 &&
+             data.siteUrl is string && data.siteUrl.size() <= 512 &&
+             data.username is string && data.username.size() <= 128 &&
+             data.appPassword is string && data.appPassword.size() <= 256;
+    }
+
+    function isValidBatch(data) {
+      return data.keys().hasAll(['keywords', 'status', 'createdAt']) &&
+             data.keys().size() <= 7 &&
+             data.keywords is list && data.keywords.size() <= 100 &&
+             data.status in ['pending', 'processing', 'completed'];
+    }
+
+    function isValidArticle(data) {
+      return data.keys().hasAll(['keyword', 'title', 'content', 'status', 'createdAt']) &&
+             data.keys().size() <= 18 &&
+             data.keyword is string && data.keyword.size() <= 512 &&
+             data.title is string && data.title.size() <= 1024 &&
+             data.content is string && data.content.size() <= 200000 &&
+             data.status in ['draft', 'published', 'scheduled', 'error'];
+    }
+
+    // --- Collection Rules ---
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                      incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email']) &&
+                      incoming().email == existing().email &&
+                      incoming().createdAt == existing().createdAt;
+
+      match /apiKeys/{keyId} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidAPIKey(incoming()) && isValidId(keyId) && incoming().createdAt == request.time;
+        allow update: if isOwner(userId) && isValidAPIKey(incoming()) &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'usageCount']) &&
+                        incoming().createdAt == existing().createdAt;
+        allow delete: if isOwner(userId);
+      }
+
+      match /websites/{siteId} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidWebsite(incoming()) && isValidId(siteId) && incoming().createdAt == request.time;
+        allow update: if isOwner(userId) && isValidWebsite(incoming()) &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'siteUrl', 'username', 'appPassword']) &&
+                        incoming().createdAt == existing().createdAt;
+        allow delete: if isOwner(userId);
+      }
+
+      match /batches/{batchId} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidBatch(incoming()) && isValidId(batchId) && incoming().createdAt == request.time;
+        allow update: if isOwner(userId) && isValidBatch(incoming()) &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['status']) &&
+                        incoming().createdAt == existing().createdAt;
+        allow delete: if isOwner(userId);
+      }
+
+      match /articles/{articleId} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidArticle(incoming()) && isValidId(articleId) && incoming().createdAt == request.time;
+        allow update: if isOwner(userId) && isValidArticle(incoming()) &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'wpPostId', 'error', 'title', 'content', 'metaDescription', 'slug', 'schemaMarkup']) &&
+                        incoming().createdAt == existing().createdAt;
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}
