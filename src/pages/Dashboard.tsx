@@ -14,8 +14,15 @@ export const DashboardPage = () => {
     activeApiKeys: 0,
   });
   const [recentArticles, setRecentArticles] = useState<any[]>([]);
+  const [hasSystemKey, setHasSystemKey] = useState(false);
 
   useEffect(() => {
+    // Check AI Core status
+    window.fetch('/api/config')
+      .then(res => res.json())
+      .then(data => setHasSystemKey(data.hasSystemKey))
+      .catch(() => setHasSystemKey(false));
+
     if (!auth.currentUser) return;
     const uid = auth.currentUser.uid;
 
@@ -82,7 +89,7 @@ export const DashboardPage = () => {
           <StatCard title="Total Articles" value={stats.totalKeywords} subtext="Lifetime Generated" />
           <StatCard title="Published" value={stats.articlesPublished} subtext="Live on WP" />
           <StatCard title="WP Sites" value={stats.connectedSites} subtext="Active Integrations" />
-          <StatCard title="API Keys" value={stats.activeApiKeys} subtext="Rotation Ready" highlight />
+          <StatCard title="API Keys" value={stats.activeApiKeys + (hasSystemKey ? 1 : 0)} subtext={hasSystemKey ? "System Core Active" : "Rotation Ready"} highlight={hasSystemKey} />
         </div>
 
         {/* CENTER LAYOUT */}
@@ -138,7 +145,12 @@ export const DashboardPage = () => {
               <div className="w-full h-[1px] bg-white/10"></div>
               <div>
                 <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Engine</p>
-                <p className="text-sm font-bold text-white uppercase">Gemini 1.5 Flash</p>
+                <p className={cn(
+                  "text-sm font-bold uppercase italic",
+                  hasSystemKey ? "text-primary" : "text-white/60"
+                )}>
+                  {hasSystemKey ? "AI_CORE_READY" : "GEMINI_1.5_FLASH"}
+                </p>
               </div>
               <div className="w-full h-[1px] bg-white/10"></div>
               <p className="text-[9px] text-white/20 leading-relaxed font-bold italic tracking-tighter">

@@ -17,6 +17,9 @@ export const KeywordsPage = () => {
   const [logs, setLogs] = useState<string[]>([]);
 
   useEffect(() => {
+    const savedSiteId = localStorage.getItem('last_site_id');
+    if (savedSiteId) setSelectedSiteId(savedSiteId);
+
     if (!auth.currentUser) return;
     
     const sitesQuery = query(collection(db, 'users', auth.currentUser.uid, 'websites'));
@@ -26,6 +29,11 @@ export const KeywordsPage = () => {
     onSnapshot(apiQuery, (snap) => setApiKeys(snap.docs.map(d => ({ id: d.id, ...d.data() } as APIKey))));
   }, []);
 
+  const onSiteChange = (id: string) => {
+    setSelectedSiteId(id);
+    localStorage.setItem('last_site_id', id);
+  };
+
   const addLog = (msg: string) => setLogs(prev => [msg, ...prev].slice(0, 5));
 
   const startGeneration = async () => {
@@ -33,22 +41,20 @@ export const KeywordsPage = () => {
     if (kwList.length === 0 || !selectedSiteId || !auth.currentUser) return;
     
     const dbKeys = apiKeys.filter(k => k.status === 'active');
-    const systemKey = process.env.GEMINI_API_KEY;
     
-    if (dbKeys.length === 0 && !systemKey) {
-      alert("Please add an active API key first!");
+    // Check if system key is available on server
+    const configRes = await window.fetch('/api/config');
+    const { hasSystemKey } = await configRes.json();
+    
+    if (dbKeys.length === 0 && !hasSystemKey) {
+      alert("No AI Core detected. Please add an API key in API Management.");
       return;
     }
 
     // Combine database keys with system key as fallback
     const activeKeys: Partial<APIKey>[] = dbKeys.length > 0 
       ? dbKeys 
-      : [{ id: 'system-default', key: systemKey || '', status: 'active', usageCount: 0 }];
-
-    if (activeKeys.length === 1 && activeKeys[0].id === 'system-default' && !activeKeys[0].key) {
-      alert("No API key available. Please configure GEMINI_API_KEY or add a key in API Management.");
-      return;
-    }
+      : [{ id: 'system-default', key: 'system-default', status: 'active', usageCount: 0 }];
 
     const selectedSite = sites.find(s => s.id === selectedSiteId);
     if (!selectedSite) return;
@@ -201,7 +207,7 @@ export const KeywordsPage = () => {
                 <label className="block text-[10px] font-black uppercase tracking-widest text-primary mb-3">Target Node (WP)</label>
                 <select
                   value={selectedSiteId}
-                  onChange={e => setSelectedSiteId(e.target.value)}
+                  onChange={e => onSiteChange(e.target.value)}
                   disabled={isProcessing}
                   className="w-full bg-black/40 px-4 py-3 rounded border border-white/10 text-xs font-bold focus:outline-none focus:border-primary transition-all appearance-none text-white tracking-tight"
                 >

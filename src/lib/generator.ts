@@ -72,25 +72,43 @@ export async function generateAndPublish(params: GenerationParams) {
   try {
     const ai = new GoogleGenAI({ apiKey });
 
-    // 1. Generate SEO Data
-    const seoResponse = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Act as an expert gaming SEO writer. Convert the keyword "${keyword}" into a trending, high-CTR SEO title, meta description, and a URL slug.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            metaDescription: { type: Type.STRING },
-            slug: { type: Type.STRING }
-          },
-          required: ["title", "metaDescription", "slug"]
-        }
+    const generateWithProxy = async (prompt: string, schema: any) => {
+      if (apiKey === "system-default" || !apiKey) {
+        const response = await window.fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, schema, keyword })
+        });
+        if (!response.ok) throw new Error(await response.text());
+        return await response.json();
+      } else {
+        const result = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: prompt.replace("${keyword}", keyword),
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: schema
+          }
+        });
+        return { text: result.text };
       }
-    });
+    };
 
-    const seoData = JSON.parse(seoResponse.text);
+    // 1. Generate SEO Data
+    const seoDataResponse = await generateWithProxy(
+      `Act as an expert gaming SEO writer. Convert the keyword "${keyword}" into a trending, high-CTR SEO title, meta description, and a URL slug.`,
+      {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          metaDescription: { type: Type.STRING },
+          slug: { type: Type.STRING }
+        },
+        required: ["title", "metaDescription", "slug"]
+      }
+    );
+
+    const seoData = JSON.parse(seoDataResponse.text);
 
     await updateDoc(articleRef, {
       title: seoData.title,
@@ -99,9 +117,8 @@ export async function generateAndPublish(params: GenerationParams) {
     });
 
     // 2. Generate Content
-    const contentResponse = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Act as an expert gaming industry historian and critic. Write a comprehensive, high-quality, and deeply researched article for the title: "${seoData.title}".
+    const contentDataResponse = await generateWithProxy(
+      `Act as an expert gaming industry historian and critic. Write a comprehensive, high-quality, and deeply researched article for the title: "\${title}".
       
       CRITICAL REQUIREMENTS:
       - LENGTH: Minimum 1200 words of deep, high-value content. Do not provide a summary; provide an exhaustive deep dive.
@@ -120,21 +137,18 @@ export async function generateAndPublish(params: GenerationParams) {
       1. "contentHtml": MUST ONLY contain the article body (Intro, What You Will Learn, History, Deep Dive, GEO, Future, FAQ). DO NOT put any JSON or Schema inside this field.
       2. "schemaMarkup": MUST contain valid JSON-LD code for "Article" and "FAQPage" entities. DO NOT wrap this in <script> tags; provide the raw JSON-LD string.
       
-      CRITICAL: Ensure the word count exceeds 1200 words. Verification will be performed on the text length.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            contentHtml: { type: Type.STRING },
-            schemaMarkup: { type: Type.STRING }
-          },
-          required: ["contentHtml", "schemaMarkup"]
-        }
+      CRITICAL: Ensure the word count exceeds 1200 words. Verification will be performed on the text length.`.replace("${title}", seoData.title),
+      {
+        type: Type.OBJECT,
+        properties: {
+          contentHtml: { type: Type.STRING },
+          schemaMarkup: { type: Type.STRING }
+        },
+        required: ["contentHtml", "schemaMarkup"]
       }
-    });
+    );
 
-    const contentData = JSON.parse(contentResponse.text);
+    const contentData = JSON.parse(contentDataResponse.text);
 
     await updateDoc(articleRef, {
       content: contentData.contentHtml,
